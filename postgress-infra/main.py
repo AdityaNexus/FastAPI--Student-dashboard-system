@@ -1,31 +1,27 @@
-#Part 1: Load DATABASE_URL from .env file
 import os
+import time
+from pathlib import Path as FilePath
+
 from pydantic import BaseModel ,EmailStr, Field ,field_validator ,computed_field ,ConfigDict
 from fastapi import FastAPI , HTTPException, Path , Depends, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
-load_dotenv()  # take environment variables from .env.
-from sqlalchemy import create_engine , text ,Column ,String , Integer,func
 from sqlalchemy.orm import sessionmaker , DeclarativeBase,Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
+
+load_dotenv()
+from sqlalchemy import create_engine , text ,Column ,String , Integer,func
 DATABASE_URL = os.getenv("DATABASE_URL")
-#print(f"Database URL: {DATABASE_URL}")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL must be set")
 
-# Part 2: Create engine = the road to the database
-engine = create_engine(DATABASE_URL)
-with engine.connect() as conn:
-    version = conn.execute(text("SELECT version();"))
-    #print(f"Database version {version.fetchone()[0]}")
-
-
-# Part 3 : create session 
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 sessionlocal = sessionmaker(bind=engine)
-#db = sessionlocal()  # create a session to interact with the database
 
 class base(DeclarativeBase):
     pass
-
-# part 4 : create table in the database if it doesn't exist
 
 class StudentDB(base):
     __tablename__ = "student_records"
@@ -93,8 +89,27 @@ def get_db():
     finally:
         db.close()
 
-# Part 8 : create the FastAPI app
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.on_event("startup")
+def initialize_database():
+    for attempt in range(30):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            base.metadata.create_all(engine)
+            return
+        except OperationalError:
+            if attempt == 29:
+                raise
+            time.sleep(2)
 
 # Part 9: GET one student
 #Depends(get_db()) - before the endpoint is called , get_db() is called and the session is passed to the endpoint
@@ -105,6 +120,11 @@ def get_student(student_id : str = Path(...,description = "The Id of the student
     if student is None:
         raise HTTPException(status_code=404 , detail=f"Student with id {student_id} not found")
     return student
+
+
+@app.get("/student/{student_id}", response_model=StudentResponse, include_in_schema=False)
+def get_student_legacy(student_id: str, db: Session = Depends(get_db)):
+    return get_student(student_id, db)
 
 # Part 10: POST - create a student
 
@@ -122,6 +142,11 @@ def create_student(student : StudentCreate ,
         db.rollback()  # rollback the transaction if there is an integrity error
         raise HTTPException(status_code=400 , detail=f"Integrity error: {str(e)}")
     return new_student
+
+
+@app.post("/create", response_model=StudentResponse, status_code=201, include_in_schema=False)
+def create_student_legacy(student: StudentCreate, db: Session = Depends(get_db)):
+    return create_student(student, db)
 
 
 # Part 11: PUT - Update a student
@@ -144,6 +169,13 @@ def update_student(student : StudentUpdate,
     return student_in_db
 
 
+@app.put("/update/{student_id}", response_model=StudentResponse, include_in_schema=False)
+def update_student_legacy(
+    student: StudentUpdate, student_id: str, db: Session = Depends(get_db)
+):
+    return update_student(student, student_id, db)
+
+
 # 12 - DELETE - Delete a student
 
 @app.delete("/deleteStudent/{student_id}",tags=["DELETE ROUTE"])
@@ -161,6 +193,11 @@ def delelte_student(student_id : str = Path(...,description = "The Id of the stu
         db.rollback()
         raise HTTPException(status_code=400 , detail=f"Integrity error: {str(e)}")
     return f"Student with id {student_id} and name {student_name} deleted successfully"
+
+
+@app.delete("/delete/{student_id}", include_in_schema=False)
+def delete_student_legacy(student_id: str, db: Session = Depends(get_db)):
+    return delelte_student(student_id, db)
 
 
 
@@ -209,3 +246,65 @@ def get_all(
         "total_students": total_students,
         "students": students
     }
+
+
+def _students_as_dict(students):
+    return {
+        student.id: StudentResponse.model_validate(student).model_dump()
+        for student in students
+    }
+
+
+@app.get("/student", include_in_schema=False)
+def get_all_legacy(db: Session = Depends(get_db)):
+    return _students_as_dict(db.query(StudentDB).order_by(StudentDB.id).all())
+
+
+@app.get("/paginate", include_in_schema=False)
+def paginate_legacy(
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    result = get_all(
+        course=None,
+        sort_by=None,
+        order="asc",
+        page=page,
+        limit=limit,
+        db=db,
+    )
+    return {
+        **result,
+        "students": [StudentResponse.model_validate(student).model_dump() for student in result["students"]],
+    }
+
+
+@app.get("/filter", include_in_schema=False)
+def filter_legacy(course: str, db: Session = Depends(get_db)):
+    students = db.query(StudentDB).filter(func.lower(StudentDB.course) == course.lower()).all()
+    return _students_as_dict(students)
+
+
+@app.get("/sort", include_in_schema=False)
+def sort_legacy(
+    sort_by: str,
+    order: str = "asc",
+    db: Session = Depends(get_db),
+):
+    result = get_all(
+        course=None,
+        sort_by=sort_by,
+        order=order,
+        page=1,
+        limit=100,
+        db=db,
+    )
+    return [StudentResponse.model_validate(student).model_dump() for student in result["students"]]
+
+
+WEB_DIR = FilePath(__file__).resolve().parent / "web"
+if not WEB_DIR.is_dir():
+    WEB_DIR = FilePath(__file__).resolve().parent.parent / "web"
+if WEB_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
