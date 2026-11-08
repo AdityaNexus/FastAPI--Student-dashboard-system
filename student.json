@@ -1,0 +1,51 @@
+{
+    "001": {
+        "name": "John Doe",
+        "age": 20,
+        "course": "Computer Science",
+        "email": "john.doe@example.com",
+        "marks": 85
+    },
+    "002": {
+        "name": "Jane Smith",
+        "age": 22,
+        "course": "Mathematics",
+        "email": "jane.smith@example.com",
+        "marks": 90
+    },
+    "003": {
+        "name": "Alice Johnson",
+        "age": 21,
+        "course": "Physics",
+        "email": "alice.johnson@example.com",
+        "marks": 95
+    },
+    "23": {
+        "name": "Aditya",
+        "age": 20,
+        "course": "Mathematics",
+        "email": "aditya2233@gmail.com",
+        "marks": 75
+    },
+    "89": {
+        "name": "Rahul",
+        "age": 20,
+        "course": "Computer Science",
+        "email": "rahul223@gmail.com",
+        "marks": 75
+    },
+    "64": {
+        "name": "Krishna",
+        "age": 22,
+        "course": "Mathematics",
+        "email": "krish223@gmail.com",
+        "marks": 56
+    },
+    "22": {
+        "name": "Muskan",
+        "age": 22,
+        "course": "AI",
+        "email": "muskan223@gmail.com",
+        "marks": 67
+    }
+}

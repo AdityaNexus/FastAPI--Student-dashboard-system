@@ -1,0 +1,21 @@
+{
+    "001" :{
+        "name": "John Doe",
+        "age": 20,
+        "course": "Computer Science",
+        "marks": 85
+
+    },
+    "002" :{
+        "name": "Jane Smith",
+        "age": 22,
+        "course": "Mathematics",
+        "marks": 90
+    },
+    "003" :{
+        "name": "Alice Johnson",
+        "age": 21,
+        "course": "Physics",
+        "marks": 95
+    }
+}
